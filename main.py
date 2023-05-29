@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget, QLi
     QListWidgetItem, QStackedWidget, QLabel, QHBoxLayout, QPushButton, QTableWidgetItem, \
     QMenu, QLineEdit, QMessageBox, QDialog
 
+
 from cadastrar import CadastrarWidget
 from excluir import ExcluirWidget
 from entrada import EntradaWidget
@@ -271,6 +272,7 @@ class MainWindow(QMainWindow):
             "Deseja realmente sair?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
+
 
         if reply == QMessageBox.StandardButton.Yes:
             # Se o usuário confirmar a saída, chame o método padrão de fechamento da janela
