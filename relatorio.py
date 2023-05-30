@@ -1,9 +1,12 @@
 import sqlite3
 from datetime import date
-
-from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QLabel, QSizePolicy, QSpacerItem, QHBoxLayout, QPushButton, QToolBar, QFileDialog, QTableView, QApplication
-from PyQt6.QtGui import QIcon, QStandardItemModel, QStandardItem, QFont, QPainter, QPainterPath
-from PyQt6.QtCore import Qt, QSize, QRect, QDate, QPoint
+import pdfkit
+from PyQt6.QtWidgets import QMainWindow, QWidget, QGraphicsBlurEffect, QGraphicsEffect, \
+      QGraphicsDropShadowEffect, QVBoxLayout, QLabel, QSizePolicy, QSpacerItem, QHBoxLayout, \
+          QPushButton, QToolBar, QFileDialog, QTableView, QApplication
+from PyQt6.QtGui import QIcon, QStandardItemModel, QStandardItem, QFont, QPainter, QPainterPath,\
+    QColor
+from PyQt6.QtCore import Qt, QSize, QRect, QDate, QPoint, QEvent
 from PyQt6.QtPrintSupport import QPrintDialog, QPrinter, QPrinterInfo, QAbstractPrintDialog
 
 
@@ -29,14 +32,23 @@ class RelatorioWidget(QWidget):
         self.report_table.setVisible(False)
 
         button_layout = QHBoxLayout()  # Layout horizontal para os botões
-        self.print_button = QPushButton("Imprimir")
-        self.print_button.setMaximumSize(200, 200)
-        self.print_button.setVisible(True)
+
+        self.print_button = QPushButton()
+        self.print_button.setIcon(QIcon("print.png"))  # Define a imagem do botão
+        self.print_button.setIconSize(QSize(100, 100))  # Define o tamanho do ícone
+        self.print_button.setMaximumSize(100, 100)  # Define o tamanho do botão
+        self.print_button.setFlat(True)  # Remove o efeito de botão retangular
+        self.print_button.installEventFilter(self)  # Instala o filtro de eventos
+        self.add_button_shadow_effect(self.print_button)  # Adiciona o efeito de sombra inicialmente
         self.print_button.clicked.connect(self.print_report)
 
-        self.save_pdf_button = QPushButton("Salvar")
-        self.save_pdf_button.setMaximumSize(200, 200)
-        self.save_pdf_button.setVisible(True)
+        self.save_pdf_button = QPushButton()
+        self.save_pdf_button.setIcon(QIcon("save_pdf.png"))  # Define a imagem do botão
+        self.save_pdf_button.setIconSize(QSize(100, 100))  # Define o tamanho do ícone
+        self.save_pdf_button.setMaximumSize(100, 100)  # Define o tamanho do botão
+        self.save_pdf_button.setFlat(True)  # Remove o efeito de botão retangular
+        self.save_pdf_button.installEventFilter(self)  # Instala o filtro de eventos
+        self.add_button_shadow_effect(self.save_pdf_button)  # Adiciona o efeito de sombra inicialmente
         self.save_pdf_button.clicked.connect(self.save_pdf_report)
 
         button_layout.addWidget(self.print_button)
@@ -51,6 +63,23 @@ class RelatorioWidget(QWidget):
         spacer_item = QSpacerItem(0, 0, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
         layout.addItem(spacer_item)
 
+    def add_button_shadow_effect(self, button):
+        shadow_effect = QGraphicsDropShadowEffect()
+        shadow_effect.setColor(QColor(0, 0, 0, 250))
+        shadow_effect.setOffset(0, 0)
+        shadow_effect.setBlurRadius(25)
+        button.setGraphicsEffect(shadow_effect)
+
+    def eventFilter(self, obj, event):
+        if obj == self.print_button or obj == self.save_pdf_button:
+            if event.type() == QEvent.Type.Enter:
+                self.add_button_shadow_effect(obj)
+            elif event.type() == QEvent.Type.Leave:
+                self.remove_button_shadow_effect(obj)
+        return super().eventFilter(obj, event)
+
+    def remove_button_shadow_effect(self, button):
+        button.setGraphicsEffect(None)
 
     def generate_report(self):
         # Estabelece conexão com o banco de dados
@@ -95,7 +124,6 @@ class RelatorioWidget(QWidget):
             painter.begin(printer)
             page_rect = printer.pageRect(QPrinter.Unit.Point)  # Obter o retângulo da página em pontos
             page_size = QSize(int(page_rect.width()), int(page_rect.height()))  # Criar um objeto QSize com largura e altura
-            self.report_table.resize(page_size)  # Ajustar o tamanho da tabela ao tamanho da página
 
             # Definir título do relatório
             title_font = QFont("Arial", 16, QFont.Weight.Bold)
@@ -112,6 +140,11 @@ class RelatorioWidget(QWidget):
             footer_width = painter.fontMetrics().boundingRect(QRect(0, 0, page_size.width(), page_size.height()), Qt.AlignmentFlag.AlignCenter, footer_text).width()
             footer_pos = QPoint(int((page_size.width() - footer_width) / 2), page_size.height() - 50)
             painter.drawText(footer_pos, footer_text)
+
+            # Posicionar a tabela entre o cabeçalho e o rodapé
+            table_height = page_size.height() - title_pos.y() - title_font.pointSize() - 20 - footer_font.pointSize() - 20
+            table_pos = QPoint(20, title_pos.y() + title_font.pointSize() + 20)
+            self.report_table.setGeometry(table_pos.x(), table_pos.y(), page_size.width() - 40, table_height)
 
             self.report_table.render(painter)
             painter.end()
@@ -130,7 +163,6 @@ class RelatorioWidget(QWidget):
             painter.begin(printer)
             page_rect = printer.pageRect(QPrinter.Unit.Point)  # Obter o retângulo da página em pontos
             page_size = QSize(int(page_rect.width()), int(page_rect.height()))  # Criar um objeto QSize com largura e altura
-            self.report_table.resize(page_size)  # Ajustar o tamanho da tabela ao tamanho da página
 
             # Definir título do relatório
             title_font = QFont("Arial", 16, QFont.Weight.Bold)
@@ -148,10 +180,16 @@ class RelatorioWidget(QWidget):
             footer_pos = QPoint(int((page_size.width() - footer_width) / 2), page_size.height() - 50)
             painter.drawText(footer_pos, footer_text)
 
+            # Posicionar a tabela entre o cabeçalho e o rodapé
+            table_height = page_size.height() - title_pos.y() - title_font.pointSize() - 20 - footer_font.pointSize() - 20
+            table_pos = QPoint(20, title_pos.y() + title_font.pointSize() + 20)
+            self.report_table.setGeometry(table_pos.x(), table_pos.y(), page_size.width() - 40, table_height)
+
             self.report_table.render(painter)
             painter.end()
 
             print("Relatório impresso com sucesso!")
+
 
 
 class MainWindow(QMainWindow):
@@ -192,6 +230,3 @@ if __name__ == "__main__":
     main_window.setCentralWidget(relatorio_widget)
     main_window.show()
     sys.exit(app.exec())
-
-
-
