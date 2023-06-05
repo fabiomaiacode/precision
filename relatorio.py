@@ -1,13 +1,16 @@
-import sqlite3
 from datetime import date
-import pdfkit
-from PyQt6.QtWidgets import QMainWindow, QWidget, QGraphicsBlurEffect, QGraphicsEffect, \
-      QGraphicsDropShadowEffect, QVBoxLayout, QLabel, QSizePolicy, QSpacerItem, QHBoxLayout, \
-          QPushButton, QToolBar, QFileDialog, QTableView, QApplication
-from PyQt6.QtGui import QIcon, QStandardItemModel, QStandardItem, QFont, QPainter, QPainterPath,\
-    QColor
-from PyQt6.QtCore import Qt, QSize, QRect, QDate, QPoint, QEvent
-from PyQt6.QtPrintSupport import QPrintDialog, QPrinter, QPrinterInfo, QAbstractPrintDialog
+import tempfile
+import pandas as pd
+import os
+import sqlite3
+from PyQt6.QtWidgets import QMainWindow, QApplication, QVBoxLayout, QLabel, QPushButton, QToolBar, QFileDialog, QWidget, QStackedWidget
+from PyQt6.QtGui import QIcon
+from PyQt6.QtCore import QDate, QSize
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Image, Spacer
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.pagesizes import letter
 
 
 
@@ -15,211 +18,167 @@ class RelatorioWidget(QWidget):
     def __init__(self):
         super().__init__()
 
-        layout = QVBoxLayout()
-        layout.setContentsMargins(0, 0, 0, 0)
-        self.setLayout(layout)
-
-        title_label = QLabel("RELATÓRIO")
-        title_label.setStyleSheet("font-size: 20px; font-weight: bold;")
+        self.title_label = QLabel("RELATÓRIO")
+        self.title_label.setStyleSheet("font-size: 20px; font-weight: bold;")
 
         self.generate_button = QPushButton("Gerar Relatório")
         self.generate_button.clicked.connect(self.generate_report)
 
-        self.report_table = QTableView()
-        self.report_table.setEditTriggers(QTableView.EditTrigger.NoEditTriggers)
-        self.report_table.setSelectionBehavior(QTableView.SelectionBehavior.SelectRows)
-        self.report_table.setSelectionMode(QTableView.SelectionMode.SingleSelection)
-        self.report_table.setVisible(False)
-
-        button_layout = QHBoxLayout()  # Layout horizontal para os botões
-
-        self.print_button = QPushButton()
-        self.print_button.setIcon(QIcon("print.png"))  # Define a imagem do botão
-        self.print_button.setIconSize(QSize(100, 100))  # Define o tamanho do ícone
-        self.print_button.setMaximumSize(100, 100)  # Define o tamanho do botão
-        self.print_button.setFlat(True)  # Remove o efeito de botão retangular
-        self.print_button.installEventFilter(self)  # Instala o filtro de eventos
-        self.add_button_shadow_effect(self.print_button)  # Adiciona o efeito de sombra inicialmente
-        self.print_button.clicked.connect(self.print_report)
+        self.content_label = QLabel()
+        self.content_label.setWordWrap(True)
+        self.content_label.setVisible(False)
 
         self.save_pdf_button = QPushButton()
         self.save_pdf_button.setIcon(QIcon("save_pdf.png"))  # Define a imagem do botão
         self.save_pdf_button.setIconSize(QSize(100, 100))  # Define o tamanho do ícone
         self.save_pdf_button.setMaximumSize(100, 100)  # Define o tamanho do botão
         self.save_pdf_button.setFlat(True)  # Remove o efeito de botão retangular
-        self.save_pdf_button.installEventFilter(self)  # Instala o filtro de eventos
-        self.add_button_shadow_effect(self.save_pdf_button)  # Adiciona o efeito de sombra inicialmente
         self.save_pdf_button.clicked.connect(self.save_pdf_report)
+        self.save_pdf_button.setVisible(False)
 
-        button_layout.addWidget(self.print_button)
-        button_layout.addWidget(self.save_pdf_button)
-
-        layout.addWidget(title_label)
+        layout = QVBoxLayout()
+        layout.addWidget(self.title_label)
         layout.addWidget(self.generate_button)
-        layout.addWidget(self.report_table)
-        layout.addLayout(button_layout)  # Adiciona o layout dos botões
+        layout.addWidget(self.content_label)
+        layout.addWidget(self.save_pdf_button)
+        layout.setSpacing(20)
 
-        # Adiciona espaço vertical para empurrar o conteúdo para baixo
-        spacer_item = QSpacerItem(0, 0, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
-        layout.addItem(spacer_item)
-
-    def add_button_shadow_effect(self, button):
-        shadow_effect = QGraphicsDropShadowEffect()
-        shadow_effect.setColor(QColor(0, 0, 0, 250))
-        shadow_effect.setOffset(0, 0)
-        shadow_effect.setBlurRadius(25)
-        button.setGraphicsEffect(shadow_effect)
-
-    def eventFilter(self, obj, event):
-        if obj == self.print_button or obj == self.save_pdf_button:
-            if event.type() == QEvent.Type.Enter:
-                self.add_button_shadow_effect(obj)
-            elif event.type() == QEvent.Type.Leave:
-                self.remove_button_shadow_effect(obj)
-        return super().eventFilter(obj, event)
-
-    def remove_button_shadow_effect(self, button):
-        button.setGraphicsEffect(None)
+        self.setLayout(layout)
 
     def generate_report(self):
-        # Estabelece conexão com o banco de dados
-        conn = sqlite3.connect("database.db")
+        # Conexão com o banco de dados
+        conn = sqlite3.connect('database.db')
+
+        # Cria um cursor para executar comandos SQL
         cursor = conn.cursor()
 
-        # Executa a consulta SQL para obter a quantidade atual de produtos
-        cursor.execute("SELECT code, name, category, quantity FROM products")
-        rows = cursor.fetchall()
+        # Executa uma consulta para obter os dados da tabela "products"
+        cursor.execute("SELECT * FROM products")
 
-        # Cria o modelo de dados para a tabela
-        model = QStandardItemModel(len(rows), 4)
-        model.setHorizontalHeaderLabels(["Código", "Nome", "Categoria", "Quantidade"])
-
-        # Preenche o modelo de dados com os resultados
-        for row_idx, row_data in enumerate(rows):
-            for col_idx, col_data in enumerate(row_data):
-                item = QStandardItem(str(col_data))
-                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                model.setItem(row_idx, col_idx, item)
-
-        # Define o modelo de dados na tabela
-        self.report_table.setModel(model)
-        self.report_table.setVisible(True)
+        # Obtém todos os registros retornados pela consulta
+        table_data = cursor.fetchall()
 
         # Fecha a conexão com o banco de dados
         conn.close()
 
-        self.save_pdf_button.setVisible(True)
+        # Cria o DataFrame a partir dos dados
+        df = pd.DataFrame(table_data, columns=["id", "code", "name", "category", "quantity"])
 
+        # Converte o DataFrame em uma lista de listas
+        table_data = [list(df.columns)] + df.values.tolist()
+
+        # Define o caminho do arquivo PDF
+        file_path, _ = QFileDialog.getSaveFileName(self, "Salvar Relatório", "", "PDF Files (*.pdf)")
+
+        if file_path:
+            # Gera o PDF com os dados do relatório
+            pdf = SimpleDocTemplate(file_path, pagesize=letter)
+            elements = []
+
+            ## Título do Relatório
+            title_style = ParagraphStyle(
+                name="TitleStyle",
+                parent=getSampleStyleSheet()["Heading1"],
+                fontSize=16,
+                textColor=colors.black,
+                spaceAfter=20,
+            )
+            title_text = "Relatório de Estoque - Gerência de Feiras - Secretaria de Serviços Públicos de Caruaru"
+            title = Paragraph(title_text, title_style)
+            elements.append(title)
+
+
+            # Adiciona as imagens de logotipo
+            logo1 = Image("logo.png")
+            logo1.drawHeight = 100  # Ajusta a altura da imagem
+            logo1.drawWidth = 100   # Ajusta a largura da imagem
+
+            logo2 = Image("logo2.png")
+            logo2.drawHeight = 100
+            logo2.drawWidth = 100
+
+            # Cria um spacer horizontal entre as imagens
+            spacer = Spacer(20, 100)  # Ajuste os valores de acordo com a necessidade
+
+            # Cria a tabela para o cabeçalho
+            header_table = Table([[logo1, spacer, logo2]], colWidths=[100, 20, 100])
+            header_table.setStyle(TableStyle([
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),  # Alinha verticalmente no centro
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),   # Remove o espaçamento interno à esquerda
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),  # Remove o espaçamento interno à direita
+            ]))
+
+            # Adiciona o cabeçalho
+            elements.append(header_table)
+
+            # Define o estilo da tabela
+            style = TableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), colors.black),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, 0), 12),
+                ("BOTTOMPADDING", (0, 0), (-1, 0), 12),
+                ("BACKGROUND", (0, 1), (-1, -1), colors.white),
+                ("GRID", (0, 0), (-1, -1), 1, colors.black)
+            ])
+
+            # Cria a tabela e aplica o estilo
+            table = Table(table_data, style=style)
+
+            # Adiciona a tabela aos elementos do PDF
+            elements.append(table)
+
+            # Adiciona o rodapé
+            footer_style = getSampleStyleSheet()["BodyText"]
+            footer_text = "Gerado em: {date}".format(date=date.today().strftime("%d/%m/%Y"))
+            footer = Paragraph(footer_text, footer_style)
+            elements.append(footer)
+
+            # Constrói o PDF
+            pdf.build(elements)
+
+            temp_file_path = os.path.join(tempfile.gettempdir(), "temp_report.pdf")
+
+            # Copia o arquivo PDF gerado para o novo caminho
+            os.replace(file_path, temp_file_path)
+
+            self.content_label.setText("Relatório gerado com sucesso.")
+            self.content_label.setVisible(True)
+            self.save_pdf_button.setVisible(True)
+        else:
+            self.content_label.setText("Geração do relatório cancelada.")
+            self.content_label.setVisible(True)
+            self.save_pdf_button.setVisible(False)
 
     def save_pdf_report(self):
         file_path, _ = QFileDialog.getSaveFileName(self, "Salvar Relatório em PDF", "", "PDF Files (*.pdf)")
 
         if file_path:
-            # Salvar o arquivo em PDF
-            printer = QPrinter(QPrinterInfo.defaultPrinter())
-            printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
-            printer.setOutputFileName(file_path)
+            temp_file_path = os.path.join(tempfile.gettempdir(), "temp_report.pdf")
 
-            painter = QPainter()
-            painter.begin(printer)
-            page_rect = printer.pageRect(QPrinter.Unit.Point)  # Obter o retângulo da página em pontos
-            page_size = QSize(int(page_rect.width()), int(page_rect.height()))  # Criar um objeto QSize com largura e altura
+            # Copia o arquivo PDF gerado para o novo caminho
+            os.replace(temp_file_path, file_path)
 
-            # Definir título do relatório
-            title_font = QFont("Arial", 16, QFont.Weight.Bold)
-            painter.setFont(title_font)
-            title_text = "Relatório de Estoque - Gerência de Feiras - Secretaria de Serviços Públicos - Prefeitura de Caruaru"
-            title_width = painter.fontMetrics().boundingRect(QRect(0, 0, page_size.width(), page_size.height()), Qt.AlignmentFlag.AlignCenter, title_text).width()
-            title_pos = QPoint(int((page_size.width() - title_width) / 2), 30)
-            painter.drawText(title_pos, title_text)
+            self.content_label.setText("Relatório salvo com sucesso.")
+        else:
+            self.content_label.setText("Salvamento do relatório cancelado.")
 
-            # Definir rodapé com a data de emissão
-            footer_font = QFont("Arial", 12)
-            painter.setFont(footer_font)
-            footer_text = "Data de emissão: {}".format(QDate.currentDate().toString("dd/MM/yyyy"))
-            footer_width = painter.fontMetrics().boundingRect(QRect(0, 0, page_size.width(), page_size.height()), Qt.AlignmentFlag.AlignCenter, footer_text).width()
-            footer_pos = QPoint(int((page_size.width() - footer_width) / 2), page_size.height() - 50)
-            painter.drawText(footer_pos, footer_text)
-
-            # Posicionar a tabela entre o cabeçalho e o rodapé
-            table_height = page_size.height() - title_pos.y() - title_font.pointSize() - 20 - footer_font.pointSize() - 20
-            table_pos = QPoint(20, title_pos.y() + title_font.pointSize() + 20)
-            self.report_table.setGeometry(table_pos.x(), table_pos.y(), page_size.width() - 40, table_height)
-
-            self.report_table.render(painter)
-            painter.end()
-
-            print("Relatório salvo em PDF com sucesso!")
-            print("Caminho do arquivo:", file_path)
-
-
-    def print_report(self):
-        # lógica para imprimir o relatório
-        printer = QPrinter(QPrinterInfo.defaultPrinter())
-        dialog = QPrintDialog(printer, self)
-
-        if dialog.exec() == QAbstractPrintDialog.DialogCode.Accepted:
-            painter = QPainter()
-            painter.begin(printer)
-            page_rect = printer.pageRect(QPrinter.Unit.Point)  # Obter o retângulo da página em pontos
-            page_size = QSize(int(page_rect.width()), int(page_rect.height()))  # Criar um objeto QSize com largura e altura
-
-            # Definir título do relatório
-            title_font = QFont("Arial", 16, QFont.Weight.Bold)
-            painter.setFont(title_font)
-            title_text = "Relatório de Estoque - Gerência de Feiras - Secretaria de Serviços Públicos - Prefeitura de Caruaru"
-            title_width = painter.fontMetrics().boundingRect(QRect(0, 0, page_size.width(), page_size.height()), Qt.AlignmentFlag.AlignCenter, title_text).width()
-            title_pos = QPoint(int((page_size.width() - title_width) / 2), 30)
-            painter.drawText(title_pos, title_text)
-
-            # Definir rodapé com a data de emissão
-            footer_font = QFont("Arial", 12)
-            painter.setFont(footer_font)
-            footer_text = "Data de emissão: {}".format(QDate.currentDate().toString("dd/MM/yyyy"))
-            footer_width = painter.fontMetrics().boundingRect(QRect(0, 0, page_size.width(), page_size.height()), Qt.AlignmentFlag.AlignCenter, footer_text).width()
-            footer_pos = QPoint(int((page_size.width() - footer_width) / 2), page_size.height() - 50)
-            painter.drawText(footer_pos, footer_text)
-
-            # Posicionar a tabela entre o cabeçalho e o rodapé
-            table_height = page_size.height() - title_pos.y() - title_font.pointSize() - 20 - footer_font.pointSize() - 20
-            table_pos = QPoint(20, title_pos.y() + title_font.pointSize() + 20)
-            self.report_table.setGeometry(table_pos.x(), table_pos.y(), page_size.width() - 40, table_height)
-
-            self.report_table.render(painter)
-            painter.end()
-
-            print("Relatório impresso com sucesso!")
-
+        self.content_label.setVisible(True)
 
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.setup_ui()
+        self.setWindowTitle("AF Software")
+        self.setGeometry(300, 200, 400, 300)
 
-    def setup_ui(self):
-        self.setWindowTitle("AF Software - Gestão de Estoque")
-        self.setWindowIcon(QIcon("logo.png"))
-
-        self.central_widget = QWidget(self)
+        self.central_widget = QStackedWidget()
         self.setCentralWidget(self.central_widget)
 
-        layout = QVBoxLayout(self.central_widget)
-        layout.setContentsMargins(0, 0, 0, 0)
-
-        self.create_toolbar()
-        layout.addWidget(self.toolbar)
-
-        self.create_logo()
-        self.create_second_logo()
-
-        self.create_buttons()
-        layout.addLayout(self.button_layout)
-
-    def create_toolbar(self):
-        self.toolbar = QToolBar(self)
-        self.addToolBar(self.toolbar)
+        self.relatorio_widget = RelatorioWidget()
+        self.central_widget.addWidget(self.relatorio_widget)
 
 
 if __name__ == "__main__":
