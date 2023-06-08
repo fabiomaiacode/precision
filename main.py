@@ -44,16 +44,32 @@ def create_users_table():
             powers TEXT NOT NULL
         )
     """)
-    cursor.execute("""
-        INSERT INTO users (username, password, powers)
-        VALUES ('admin', 'admin', 'totais')
-    """)
-    cursor.execute("""
-        INSERT INTO users (username, password, powers)
-        VALUES ('pmc', 'pmc123', 'entrada, saída, relatório')
-    """)
+
+    # Verifica se o usuário "admin" já existe
+    cursor.execute("SELECT id FROM users WHERE username = 'admin'")
+    admin_exists = cursor.fetchone()
+
+    # Verifica se o usuário "pmc" já existe
+    cursor.execute("SELECT id FROM users WHERE username = 'pmc'")
+    pmc_exists = cursor.fetchone()
+
+    # Insere o usuário "admin" se não existir
+    if not admin_exists:
+        cursor.execute("""
+            INSERT INTO users (username, password, powers)
+            VALUES ('admin', 'admin', 'totais')
+        """)
+
+    # Insere o usuário "pmc" se não existir
+    if not pmc_exists:
+        cursor.execute("""
+            INSERT INTO users (username, password, powers)
+            VALUES ('pmc', 'pmc123', 'entrada, saída, relatório')
+        """)
+
     conn.commit()
     conn.close()
+
 
 
 class LoginDialog(QDialog):
@@ -64,6 +80,8 @@ class LoginDialog(QDialog):
         palette = self.palette()
         palette.setColor(self.backgroundRole(), QColor(Qt.GlobalColor.white))
         self.setPalette(palette)
+        self.setWindowTitle("Precision - Gestão de Estoque")
+        self.setWindowIcon(QIcon("logo.png"))
 
         self.username_label = QLabel("Usuário:")
         self.username_input = QLineEdit()
@@ -83,7 +101,7 @@ class LoginDialog(QDialog):
         layout.addWidget(self.login_button)
 
         self.setLayout(layout)
-        self.setWindowTitle("Login")
+        self.setWindowTitle("Precision - Login")
         
 
     def show_centered(self):
@@ -105,7 +123,8 @@ class LoginDialog(QDialog):
             QMessageBox.warning(self, "Login Inválido", "Usuário ou senha incorretos!")
 
     def validate_login(self, username, password):
-        # Aqui você pode fazer a validação do usuário e senha com a base de dados
+        # Aqui será feito a validação do usuário e senha com a base de dados no arquivo
+        # database.db na tabela users
         # Neste exemplo, vamos considerar um usuário fixo para simplificar
         return username == "admin" and password == "admin"
 
@@ -115,7 +134,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.setWindowTitle("AF Software - Gestão de Estoque")
+        self.setWindowTitle("Precision - Gestão de Estoque")
         self.setWindowIcon(QIcon("logo.png"))
 
         self.left_menu_widget = QListWidget()
@@ -136,7 +155,7 @@ class MainWindow(QMainWindow):
 
         footer_widget = QWidget()
         footer_layout = QHBoxLayout(footer_widget)
-        footer_label = QLabel("Secretaria de Serviços Públicos - Prefeitura de Caruaru - Software de Gestão de Estoque")
+        footer_label = QLabel("Secretaria de Serviços Públicos - Prefeitura de Caruaru - Precision Software")
         footer_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         footer_layout.addWidget(footer_label)
         footer_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -166,13 +185,13 @@ class MainWindow(QMainWindow):
             }
             
             QListWidget::item:hover {
-                background-color: #b0f7b6;
+                background-color: #0B5394;
                 border: none;
             }
             
             QListWidget::item:selected {
                 background-color: #888a89;
-                color: #f5f5f5;  /* Altere para a cor verde desejada */
+                color: #f5f5f5;
             }
             
             QListWidget::item:selected:active {
