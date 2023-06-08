@@ -1,4 +1,4 @@
-﻿PRECISION SOFTWARE
+﻿PRECISION SOFTWARE (em desenvolvimento)
 
 Software para gestão de estoque da Gerência de Feiras - Secretaria de Serviços Públicos de Caruaru - PE
 
